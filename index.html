@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Submission deadlines and conference dates for the CS conferences you follow, six months either side of today.">
+<meta property="og:title" content="Paper Season">
+<meta property="og:description" content="Submission deadlines and conference dates for the CS conferences you follow.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M8 29V4' stroke='%233442c4' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M8 5h18l-5 6 5 6H8z' fill='%233442c4'/%3E%3C/svg%3E">
+<title>Paper Season</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Layout: a bare full-screen timeline. Month markers along the top, a vertical line for now, one quiet horizontal line per chosen conference, one round button that opens the picker. */
+  /* Single light look: off-white paper, dark ink. */
+  :root {
+    --bg: #f6f5f1;
+    --surface: #fdfcfa;
+    --ink: #23272f;
+    --muted: #6e717a;
+    --line: #dcdad4;
+    --soft: #ecebe6;
+    --rule: #b3b0a8;
+    --deadline: #3442c4;
+    --published: #0d7f69;
+    --decision: #a86c10;
+    --now: #c03a26;
+    --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); overflow: hidden; }
+  a { color: var(--deadline); text-underline-offset: 2px; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--deadline); outline-offset: 2px; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+  /* Timeline */
+  .board { position: relative; height: 100%; overflow: hidden; }
+  .axis { position: absolute; top: 0; left: 0; right: 0; height: 2.4rem; pointer-events: none; z-index: 3; }
+  .tick { position: absolute; top: .9rem; transform: translateX(-50%); font-size: .72rem; color: var(--muted); white-space: nowrap; }
+  .tick.year { color: var(--ink); font-weight: 600; }
+  /* today: a hairline that spans only the conference lanes */
+  .now-line { position: absolute; top: 1.2rem; bottom: 5.2rem; left: 0; width: 1px; background: var(--now); opacity: .45; z-index: 1; pointer-events: none; }
+
+  .lanes { position: absolute; top: 2.4rem; left: 0; right: 0; bottom: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
+  .lanes-inner { position: relative; margin-block: auto; padding-block: 1rem 5rem; }
+  .lane { position: relative; height: 3.6rem; }
+  .lane::before { content: ""; position: absolute; left: 0; right: 0; top: 60%; height: 1.5px; margin-top: -.75px; background: var(--rule); }
+  .lane-name { position: absolute; left: 16px; top: .35rem; z-index: 4; font-size: .8rem; font-weight: 600; color: var(--ink); background: var(--bg); padding-right: .4rem; pointer-events: none; }
+
+  .m { position: absolute; left: 0; top: 60%; z-index: 2; will-change: transform; }
+  .span { height: 3px; margin-top: -1.5px; background: var(--muted); opacity: .18; border-radius: 2px; z-index: 1; }
+  .mk { width: 0; height: 0; cursor: pointer; }
+  .mk::after { content: ""; position: absolute; width: 1.4rem; height: 1.4rem; transform: translate(-50%, -50%); }
+  .mk svg { position: absolute; overflow: visible; transition: scale .12s; }
+  .mk:hover svg { scale: 1.2; }
+  /* deadline: a flag planted on the line (pole foot sits on the date) */
+  .flag::after { transform: translate(-25%, -85%); }
+  .flag svg { width: 17px; height: 21px; left: -1.8px; top: -19.7px; color: var(--deadline); transform-origin: 1.8px 19.7px; }
+  .flag .cloth { fill: currentColor; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+  .flag .pole { stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  .flag.abs .cloth { fill: var(--bg); }
+  .flag.est svg { opacity: .5; }
+  .flag.est .cloth { fill: var(--bg); stroke-dasharray: 2 1.6; }
+  /* conference: an airplane heading along the timeline */
+  .plane svg { width: 21px; height: 21px; left: -10.5px; top: -10.5px; color: var(--published); fill: currentColor; }
+  .plane.est svg { opacity: .45; }
+  /* decisions: a small dot */
+  .mk.dec::before { content: ""; position: absolute; transform: translate(-50%, -50%); width: .5rem; height: .5rem; border-radius: 50%; background: var(--decision); }
+  .mk.dec.est::before { background: var(--bg); border: 1.5px dashed var(--decision); }
+  .mk.dec:hover::before { box-shadow: 0 0 0 3px var(--soft); }
+
+  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 5; }
+
+  .fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 30; width: 3.2rem; height: 3.2rem; border-radius: 50%; border: 0; background: var(--ink); color: var(--bg); cursor: pointer; display: grid; place-items: center; box-shadow: 0 6px 20px rgba(10, 15, 25, .22); }
+  .fab:hover { transform: translateY(-1px); }
+  .fab svg { width: 1.35rem; height: 1.35rem; }
+  .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: .45rem .9rem; cursor: pointer; font-size: .88rem; }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 500; }
+
+  /* Detail card */
+  .card { position: fixed; z-index: 40; width: max-content; max-width: min(19rem, calc(100vw - 24px)); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(10, 15, 25, .16); padding: .7rem .9rem; display: flex; flex-direction: column; gap: .15rem; font-size: .84rem; cursor: default; user-select: text; }
+  .card .ev-head { font-size: .74rem; color: var(--muted); font-weight: 600; padding-right: 1.2rem; }
+  .card h2 { margin: 0; padding-right: 1.2rem; font: 600 1.05rem/1.25 var(--font-display); }
+  .card .ev-when { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: .82rem; margin-top: .2rem; }
+  .card .ev-sub { color: var(--muted); font-size: .76rem; }
+  .card .close { position: absolute; top: .4rem; right: .45rem; background: none; border: 0; cursor: pointer; color: var(--muted); font-size: .9rem; display: none; }
+  .card.pinned .close { display: block; }
+  .badge { font: 600 .62rem/1 var(--font-mono); padding: .2rem .35rem; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge.est { border-style: dashed; }
+  .soon { color: var(--now); font-weight: 600; }
+
+  /* Picker */
+  dialog { border: 0; border-radius: 14px; padding: 0; width: min(36rem, calc(100vw - 24px)); height: min(40rem, calc(100vh - 32px)); max-height: none; background: var(--surface); color: var(--ink); box-shadow: 0 20px 60px rgba(10, 15, 25, .3); }
+  dialog::backdrop { background: rgba(10, 14, 22, .4); }
+  dialog[open] { display: flex; flex-direction: column; }
+  .dlg-head { padding: 1.3rem 1.3rem .8rem; display: flex; flex-direction: column; gap: .8rem; }
+  .dlg-head h2 { margin: 0; font: 600 1.3rem/1.2 var(--font-display); text-wrap: balance; }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: .22rem .75rem; cursor: pointer; font-size: .84rem; }
+  .chip:hover { border-color: var(--muted); }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip.partial { border-color: var(--ink); border-style: dashed; }
+  #q { font: inherit; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); width: 100%; }
+  .results { list-style: none; margin: 0; padding: 0 .6rem; overflow-y: auto; flex: 1; min-height: 0; }
+  .results label { display: grid; grid-template-columns: auto 8.5rem minmax(0, 1fr); gap: .7rem; align-items: center; padding: .45rem .7rem; cursor: pointer; font-size: .88rem; border-radius: 8px; }
+  .results label:hover { background: var(--soft); }
+  .results input { accent-color: var(--ink); }
+  .results .desc { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .results .none { padding: 1.5rem; text-align: center; color: var(--muted); }
+  .dlg-foot { display: flex; align-items: center; gap: .8rem; padding: .9rem 1.3rem 1.1rem; border-top: 1px solid var(--soft); }
+  .dlg-foot .note { font-size: .74rem; color: var(--muted); flex: 1; min-width: 0; }
+</style>
+</head>
+<body>
+
+<div class="board" id="board" aria-label="Conference timeline, six months either side of today">
+  <div class="axis" id="axis"></div>
+  <div class="now-line" id="now-line"></div>
+  <div class="lanes" id="lanes"><div class="lanes-inner" id="lanes-inner"></div></div>
+</div>
+
+<button class="fab" id="pick-btn" type="button" aria-label="Choose conferences" title="Choose conferences">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h11a2 2 0 0 1 0 4h-1v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h1V6a2 2 0 0 1 2-2"/><path d="M7 16v2a2 2 0 0 1-2 2"/><path d="M11 9h4M11 12.5h4"/></svg>
+</button>
+
+<div class="card" id="card" hidden></div>
+
+<dialog id="picker" aria-labelledby="picker-title">
+  <div class="dlg-head">
+    <h2 id="picker-title">Which conferences do you follow?</h2>
+    <div class="chips" id="tracks" aria-label="Fields"></div>
+    <input id="q" type="search" autofocus placeholder="Search" aria-label="Search conferences" autocomplete="off">
+  </div>
+  <ul class="results" id="results"></ul>
+  <div class="dlg-foot">
+    <span class="note">Showing six months either side of today. Dates from <a href="https://github.com/ccfddl/ccf-deadlines" target="_blank" rel="noopener">ccf-deadlines</a>.</span>
+    <button class="btn primary" id="done-btn" type="button">Done</button>
+  </div>
+</dialog>
+
+<script src="data.js"></script>
+<script>
+(() => {
+  const D = window.CONF_DATA;
+  const DAY = 864e5;
+  const byId = new Map(D.conferences.map(c => [c.id, c]));
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const $ = id => document.getElementById(id);
+
+  const TRACKS = [
+    { id: "nlp", name: "NLP", ids: ["acl","emnlp","naacl","eacl","coling","colm","conll","ijcnlp"] },
+    { id: "ml", name: "Machine learning", ids: ["nips","icml","iclr","aistats","colt","uai"] },
+    { id: "cv", name: "Vision", ids: ["cvpr","iccv","eccv","wacv","bmvc"] },
+    { id: "ai", name: "General AI", ids: ["aaai","ijcai","ecai"] },
+    { id: "data", name: "Data & web", ids: ["sigkdd","www","sigir","wsdm"] },
+    { id: "speech", name: "Speech", ids: ["icassp","interspeech"] },
+    { id: "robot", name: "Robotics", ids: ["icra","iros","rss","corl"] },
+    { id: "hci", name: "HCI", ids: ["chi","uist"] },
+  ].map(t => ({ ...t, ids: t.ids.filter(id => byId.has(id)) }));
+
+  // ---------- persisted state ----------
+  const STORE_KEY = "paperSeason.v3";
+  let selected = [], firstVisit = true;
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    if (saved && Array.isArray(saved.selected)) { selected = saved.selected.filter(id => byId.has(id)); firstVisit = false; }
+  } catch (e) {}
+  const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify({ selected })); } catch (e) {} };
+
+  // ---------- time helpers ----------
+  function tzOffset(tz) {
+    const s = (tz || "AoE").trim().toUpperCase();
+    if (s === "AOE") return -12;
+    if (s === "PT" || s === "PDT") return -7;
+    if (s === "PST") return -8;
+    if (s === "UTC" || s === "GMT") return 0;
+    const m = s.match(/^(?:UTC|GMT)\s*([+-])\s*(\d{1,2})(?::?(\d\d))?$/);
+    return m ? (m[1] === "-" ? -1 : 1) * (+m[2] + (m[3] ? +m[3] / 60 : 0)) : 0;
+  }
+  function parseDeadline(str, off) {
+    if (!str) return null;
+    const m = String(str).match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m) return null;
+    const [, y, mo, d, h = "23", mi = "59", se = "59"] = m;
+    return Date.UTC(+y, +mo - 1, +d, +h, +mi, +se) - off * 36e5;
+  }
+  const parseDay = s => { if (!s) return null; const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+  const addYears = (t, n) => { if (t == null) return null; const d = new Date(t); d.setUTCFullYear(d.getUTCFullYear() + n); return d.getTime(); };
+  const pad = n => String(n).padStart(2, "0");
+  const zoneName = off => off === -12 ? "AoE" : off === 0 ? "UTC" : `UTC${off > 0 ? "+" : "−"}${Math.abs(off)}`;
+  function fmtZone(t, off) {
+    const d = new Date(t + off * 36e5);
+    return `${WD[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} ${zoneName(off)}`;
+  }
+  const fmtShort = (t, off = -12) => { const d = new Date(t + off * 36e5); return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; };
+  const fmtLocal = t => new Date(t).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  function fmtRange(s, e) {
+    const a = new Date(s), b = new Date(e ?? s);
+    const [am, ad, ay, bm, bd, by] = [a.getUTCMonth(), a.getUTCDate(), a.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate(), b.getUTCFullYear()];
+    if (e == null || s === e) return `${MON[am]} ${ad}, ${ay}`;
+    if (ay !== by) return `${MON[am]} ${ad}, ${ay} – ${MON[bm]} ${bd}, ${by}`;
+    if (am === bm) return `${MON[am]} ${ad}–${bd}, ${ay}`;
+    return `${MON[am]} ${ad} – ${MON[bm]} ${bd}, ${ay}`;
+  }
+  function span(ms) {
+    const abs = Math.abs(ms);
+    const d = Math.floor(abs / DAY), h = Math.floor(abs % DAY / 36e5), m = Math.floor(abs % 36e5 / 6e4);
+    return d >= 1 ? `${d} day${d === 1 ? "" : "s"}${d < 7 ? `, ${h} h` : ""}` : `${h} h ${m} min`;
+  }
+  const relTime = (t, now = Date.now()) => t >= now ? `in ${span(t - now)}` : `${span(t - now)} ago`;
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // ---------- data model ----------
+  const edCache = new Map();
+  function editions(c) {
+    if (edCache.has(c.id)) return edCache.get(c.id);
+    const eds = c.editions.map(e => {
+      const off = tzOffset(e.tz);
+      const items = (e.deadlines || []).map(dl => ({
+        abstract: parseDeadline(dl.abstract_deadline, off),
+        paper: parseDeadline(dl.deadline, off),
+        decision: parseDeadline(dl.decision_deadline, off),
+        comment: dl.comment || "",
+      }));
+      const papers = items.map(i => i.paper).filter(t => t != null).sort((a, b) => a - b);
+      const start = parseDay(e.start);
+      return {
+        conf: c, year: e.year, link: e.link, place: e.place, dateText: e.dateText,
+        start, end: e.end ? parseDay(e.end) : start, off, items,
+        main: papers[0] ?? null,
+        decision: items.map(i => i.decision).find(t => t != null) ?? null,
+        est: false,
+      };
+    });
+    // Project the next edition when the newest known one has already closed submissions.
+    const last = eds[eds.length - 1];
+    if (last && last.main != null && last.main < Date.now()) {
+      const prev = eds[eds.length - 2];
+      let gap = prev ? last.year - prev.year : 1;
+      if (gap < 1 || gap > 2) gap = 1;
+      const sh = t => addYears(t, gap);
+      eds.push({
+        ...last, year: last.year + gap, link: null, place: null, dateText: null,
+        start: sh(last.start), end: sh(last.end), main: sh(last.main), decision: sh(last.decision),
+        items: last.items.map(i => ({ abstract: sh(i.abstract), paper: sh(i.paper), decision: sh(i.decision), comment: /\d{4}/.test(i.comment) ? "" : i.comment })),
+        est: true, basis: last.year,
+      });
+    }
+    edCache.set(c.id, eds);
+    return eds;
+  }
+  function nextDeadline(c) {
+    const now = Date.now();
+    let best = null;
+    for (const e of editions(c)) for (const i of e.items) {
+      const t = i.paper ?? i.abstract;
+      if (t != null && t >= now && (!best || t < best.t)) best = { t, e };
+    }
+    return best;
+  }
+  const RANK_SCORE = { "A*": 0, "A": 1, "B": 2, "C": 3 };
+  function shortComment(c) {
+    if (!c) return "";
+    if (/commit/i.test(c)) return "ARR commitment";
+    if (/ARR/i.test(c)) return "ARR submission";
+    return c.length > 22 ? "Deadline" : c;
+  }
+
+  // ---------- viewport ----------
+  // Fixed window: half a year either side of today, today in the middle.
+  const RANGE_DAYS = 183;
+  const board = $("board"), axis = $("axis"), lanesEl = $("lanes"), inner = $("lanes-inner"), nowLine = $("now-line");
+  let W = 800, t0 = 0, pxPerDay = 1, marks = [];
+
+  const pxPerMs = () => pxPerDay / DAY;
+  const x = t => (t - t0) * pxPerMs();
+  function measure() {
+    W = Math.max(200, lanesEl.clientWidth || board.clientWidth);
+    pxPerDay = W / (2 * RANGE_DAYS);
+    t0 = Date.now() - RANGE_DAYS * DAY;
+  }
+
+  // ---------- lanes ----------
+  function buildLanes() {
+    const confs = selected.map(id => byId.get(id))
+      .sort((a, b) => (nextDeadline(a)?.t ?? Infinity) - (nextDeadline(b)?.t ?? Infinity) || a.title.localeCompare(b.title));
+    marks = [];
+    if (!confs.length) {
+      inner.innerHTML = "";
+      $("empty")?.remove();
+      board.insertAdjacentHTML("beforeend", `<div class="empty" id="empty"><button class="btn primary" type="button" data-open-picker>Choose conferences</button></div>`);
+      layout();
+      return;
+    }
+    $("empty")?.remove();
+    let html = "";
+    for (const c of confs) {
+      html += `<div class="lane"><div class="lane-name">${esc(c.title)}</div>`;
+      editions(c).forEach((e, ei) => {
+        const key = `${c.id}|${ei}`, est = e.est ? " est" : "";
+        if (e.main != null && e.start != null && e.start > e.main) html += `<div class="m span" data-a="${e.main}" data-b="${e.start}"></div>`;
+        e.items.forEach((it, ii) => {
+          const ref = `data-ed="${key}" data-item="${ii}"`;
+          if (it.abstract != null && it.abstract !== it.paper) html += `<div class="m mk flag abs${est}" data-a="${it.abstract}" ${ref} data-kind="abstract"><svg viewBox="0 0 14 17" aria-hidden="true"><path class="pole" d="M1.5 16V1"/><path class="cloth" d="M1.5 1.5h10l-2.6 3.4 2.6 3.4h-10z"/></svg></div>`;
+          if (it.paper != null) html += `<div class="m mk flag${est}" data-a="${it.paper}" ${ref} data-kind="paper"><svg viewBox="0 0 14 17" aria-hidden="true"><path class="pole" d="M1.5 16V1"/><path class="cloth" d="M1.5 1.5h10l-2.6 3.4 2.6 3.4h-10z"/></svg></div>`;
+          if (it.decision != null) html += `<div class="m mk dec${est}" data-a="${it.decision}" ${ref} data-kind="decision"></div>`;
+        });
+        if (e.start != null) html += `<div class="m mk plane${est}" data-a="${e.start}" data-ed="${key}" data-kind="conf"><svg viewBox="0 0 24 24" aria-hidden="true"><path transform="rotate(90 12 12)" d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg></div>`;
+      });
+      html += `</div>`;
+    }
+    inner.innerHTML = html;
+    inner.prepend(nowLine);
+    inner.querySelectorAll(".m").forEach(el => marks.push({ el, a: +el.dataset.a, b: el.dataset.b ? +el.dataset.b : null }));
+    layout();
+  }
+
+  // ---------- per-frame layout ----------
+  let frame = 0;
+  function layout() { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(); }); }
+  function draw() {
+    measure();
+    const k = pxPerMs();
+    for (const m of marks) {
+      const a = (m.a - t0) * k;
+      const b = m.b != null ? (m.b - t0) * k : a;
+      if (b < -300 || a > W + 300) { m.el.hidden = true; continue; }
+      m.el.hidden = false;
+      m.el.style.transform = `translateX(${a}px)`;
+      if (m.b != null) m.el.style.width = `${Math.max(b - a, 0)}px`;
+    }
+    drawAxis();
+    const nx = x(Date.now());
+    nowLine.hidden = nx < 0 || nx > W || !marks.length;
+    nowLine.style.transform = `translateX(${nx}px)`;
+    if (cardState) cardState.pinned ? placeCard(cardState.anchor) : hideCard();
+  }
+  function drawAxis() {
+    const t1 = t0 + W / pxPerMs(), d0 = new Date(t0);
+    let html = "";
+    const add = (t, label, cls = "") => {
+      const px = x(t);
+      if (px > 24 && px < W - 24) html += `<div class="tick ${cls}" style="left:${px}px">${label}</div>`;
+    };
+    for (let i = 0; ; i++) {
+      const t = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + i, 1);
+      if (t > t1) break;
+      const dt = new Date(t), m = dt.getUTCMonth();
+      add(t, m === 0 ? String(dt.getUTCFullYear()) : MON[m], m === 0 ? "year" : "");
+    }
+    axis.innerHTML = html;
+  }
+
+  board.addEventListener("click", ev => {
+    if (ev.target.closest("[data-open-picker]")) return openPicker();
+    const m = ev.target.closest("[data-ed]");
+    if (m) showCard(m, true); else hideCard();
+  });
+
+  // ---------- detail card ----------
+  const card = $("card");
+  let cardState = null;
+  function edFromKey(key) { const [id, i] = key.split("|"); return editions(byId.get(id))[+i]; }
+  function showCard(el, pin) {
+    if (cardState?.pinned && !pin) return;
+    const e = edFromKey(el.dataset.ed), c = e.conf, now = Date.now();
+    const it = el.dataset.item != null ? e.items[+el.dataset.item] : null;
+    const rel = t => `<span class="${t > now && t - now < 14 * DAY ? "soon" : ""}">${relTime(t, now)}</span>`;
+    let what, when, sub;
+    switch (el.dataset.kind) {
+      case "abstract":
+        what = "Abstract deadline";
+        when = fmtZone(it.abstract, e.off); sub = `${fmtLocal(it.abstract)} your time · ${rel(it.abstract)}`; break;
+      case "paper":
+        what = shortComment(it.comment) || "Full paper deadline";
+        when = fmtZone(it.paper, e.off); sub = `${fmtLocal(it.paper)} your time · ${rel(it.paper)}`; break;
+      case "decision":
+        what = "Decisions";
+        when = fmtShort(it.decision, e.off); sub = rel(it.decision); break;
+      default:
+        what = "Conference";
+        when = fmtRange(e.start, e.end);
+        sub = [e.place && esc(e.place), rel(e.start)].filter(Boolean).join(" · ");
+        if (e.link) sub += `<br><a href="${esc(e.link)}" target="_blank" rel="noopener">Website</a>`;
+    }
+    card.innerHTML = `<button class="close" type="button" aria-label="Close">✕</button>
+      <div class="ev-head">${esc(c.title)} ${e.year}${e.est ? ` <span class="badge est">estimate</span>` : ""}</div>
+      <h2>${esc(what)}</h2>
+      <div class="ev-when">${when}</div>
+      <div class="ev-sub">${sub}</div>`;
+    card.classList.toggle("pinned", !!pin);
+    card.hidden = false;
+    cardState = { anchor: el, pinned: !!pin };
+    placeCard(el);
+  }
+  function placeCard(el) {
+    const r = el.getBoundingClientRect(), cr = card.getBoundingClientRect();
+    if (el.hidden || r.right < 0 || r.left > window.innerWidth) { hideCard(); return; }
+    const cx = el.classList.contains("bar") ? r.left + Math.min(r.width, 40) / 2 : r.left;
+    const left = Math.max(12, Math.min(cx - cr.width / 2, window.innerWidth - cr.width - 12));
+    let top = r.top + r.height / 2 + 18;
+    if (top + cr.height > window.innerHeight - 12) top = r.top - cr.height - 18;
+    card.style.left = `${left}px`; card.style.top = `${Math.max(12, top)}px`;
+  }
+  function hideCard() { card.hidden = true; cardState = null; }
+  card.addEventListener("click", ev => { if (ev.target.closest(".close")) hideCard(); });
+  inner.addEventListener("pointerover", ev => { const m = ev.target.closest("[data-ed]"); if (m) showCard(m, false); });
+  inner.addEventListener("pointerout", ev => { if (ev.target.closest("[data-ed]") && cardState && !cardState.pinned) hideCard(); });
+  lanesEl.addEventListener("scroll", () => { if (cardState) cardState.pinned ? placeCard(cardState.anchor) : hideCard(); }, { passive: true });
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape" && cardState) hideCard(); });
+
+  // ---------- picker ----------
+  const picker = $("picker");
+  function openPicker() {
+    hideCard();
+    $("q").value = "";
+    openSel = new Set(selected);
+    renderPicker();
+    $("results").scrollTop = 0;
+    if (picker.showModal) picker.showModal(); else picker.setAttribute("open", "");
+  }
+  function closePicker() {
+    if (picker.close) picker.close(); else picker.removeAttribute("open");
+  }
+  picker.addEventListener("close", () => { save(); buildLanes(); });
+  function setSelected(ids) { selected = [...new Set(ids)].filter(id => byId.has(id)); save(); renderPicker(); }
+  let openSel = new Set();   // selection when the picker opened; those float to the top
+  function renderPicker() { renderChips(); renderList(); }
+  function renderChips() {
+    $("tracks").innerHTML = TRACKS.map(t => {
+      const n = t.ids.filter(id => selected.includes(id)).length, full = n === t.ids.length;
+      return `<button type="button" class="chip${n && !full ? " partial" : ""}" aria-pressed="${full}" data-track="${t.id}">${esc(t.name)}</button>`;
+    }).join("");
+    $("done-btn").textContent = selected.length ? `Show ${selected.length} conference${selected.length === 1 ? "" : "s"}` : "Done";
+  }
+  function renderList() {
+    const q = $("q").value.trim().toLowerCase();
+    const list = D.conferences.filter(c => !q || c.title.toLowerCase().includes(q) || c.description.toLowerCase().includes(q) || c.id.includes(q))
+      .sort((a, b) => (q ? 0 : (openSel.has(b.id) - openSel.has(a.id)))
+        || (RANK_SCORE[a.rank.core] ?? 9) - (RANK_SCORE[b.rank.core] ?? 9) || a.title.localeCompare(b.title));
+    const shown = list.slice(0, 150);
+    $("results").innerHTML = shown.map(c => `<li><label><input type="checkbox" data-conf="${c.id}" ${selected.includes(c.id) ? "checked" : ""}>
+        <strong>${esc(c.title)}</strong><span class="desc" title="${esc(c.description)}">${esc(c.description)}</span></label></li>`).join("")
+      + (list.length > shown.length ? `<li class="none">Search to find the other ${list.length - shown.length}.</li>` : "")
+      || `<li class="none">Nothing matches “${esc(q)}”.</li>`;
+  }
+  $("pick-btn").addEventListener("click", openPicker);
+  $("done-btn").addEventListener("click", closePicker);
+  picker.addEventListener("click", ev => {
+    if (ev.target === picker) return closePicker();   // backdrop
+    const t = ev.target.closest("[data-track]");
+    if (!t) return;
+    const tr = TRACKS.find(v => v.id === t.dataset.track);
+    const full = tr.ids.every(id => selected.includes(id));
+    setSelected(full ? selected.filter(id => !tr.ids.includes(id)) : [...selected, ...tr.ids]);
+  });
+  $("results").addEventListener("change", ev => {
+    const i = ev.target.closest("[data-conf]"); if (!i) return;
+    const id = i.dataset.conf;
+    selected = i.checked ? [...new Set([...selected, id])] : selected.filter(v => v !== id);
+    save();
+    renderChips();
+  });
+  $("q").addEventListener("input", renderList);
+
+  // ---------- init ----------
+  measure();
+  buildLanes();
+  setInterval(layout, 60000);
+  new ResizeObserver(layout).observe(board);
+  if (firstVisit) openPicker();
+})();
+</script>
+</body>
+</html>
