@@ -52,7 +52,8 @@
   .lanes-inner { position: relative; margin-block: auto; padding-block: 1rem 5rem; }
   .lane { position: relative; height: 3.6rem; }
   .lane::before { content: ""; position: absolute; left: 0; right: 0; top: 60%; height: 1.5px; margin-top: -.75px; background: var(--rule); }
-  .lane-name { position: absolute; left: 16px; top: .35rem; z-index: 4; font-size: .8rem; font-weight: 600; color: var(--ink); background: var(--bg); padding-right: .4rem; pointer-events: none; }
+  .lane-name { position: absolute; left: 16px; top: .35rem; z-index: 4; font-size: .8rem; font-weight: 600; color: var(--ink); background: var(--bg); padding: 0 .4rem 0 0; border: 0; cursor: pointer; }
+  .lane-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 
   .m { position: absolute; left: 0; top: 60%; z-index: 2; will-change: transform; }
   .span { height: 3px; margin-top: -1.5px; background: var(--muted); opacity: .18; border-radius: 2px; z-index: 1; }
@@ -90,6 +91,15 @@
   .card h2 { margin: 0; padding-right: 1.2rem; font: 600 1.05rem/1.25 var(--font-display); }
   .card .ev-when { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: .82rem; margin-top: .2rem; }
   .card .ev-sub { color: var(--muted); font-size: .76rem; }
+  .card .full { color: var(--muted); font-size: .78rem; margin-bottom: .35rem; }
+  .card .rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .8rem; margin: .2rem 0 0; }
+  .card .rows dt { color: var(--muted); font-size: .74rem; padding-top: .1rem; }
+  .card .rows dd { margin: 0; font-size: .8rem; }
+  .card .rows dd .ev-sub { display: block; }
+  .card .actions { display: flex; gap: .8rem; align-items: center; margin-top: .65rem; flex-wrap: wrap; }
+  .card .go { display: inline-flex; align-items: center; gap: .35rem; background: var(--ink); color: var(--bg); text-decoration: none; border-radius: 7px; padding: .38rem .75rem; font-size: .8rem; font-weight: 500; }
+  .card .go:hover { opacity: .88; }
+  .card .alt { font-size: .78rem; color: var(--muted); }
   .card .close { position: absolute; top: .4rem; right: .45rem; background: none; border: 0; cursor: pointer; color: var(--muted); font-size: .9rem; display: none; }
   .card.pinned .close { display: block; }
   .badge { font: 600 .62rem/1 var(--font-mono); padding: .2rem .35rem; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
@@ -303,7 +313,7 @@
     $("empty")?.remove();
     let html = "";
     for (const c of confs) {
-      html += `<div class="lane"><div class="lane-name">${esc(c.title)}</div>`;
+      html += `<div class="lane"><button type="button" class="lane-name" data-info="${c.id}">${esc(c.title)}</button>`;
       editions(c).forEach((e, ei) => {
         const key = `${c.id}|${ei}`, est = e.est ? " est" : "";
         if (e.main != null && e.start != null && e.start > e.main) html += `<div class="m span" data-a="${e.main}" data-b="${e.start}"></div>`;
@@ -361,6 +371,8 @@
 
   board.addEventListener("click", ev => {
     if (ev.target.closest("[data-open-picker]")) return openPicker();
+    const n = ev.target.closest("[data-info]");
+    if (n) return showConfCard(n);
     const m = ev.target.closest("[data-ed]");
     if (m) showCard(m, true); else hideCard();
   });
@@ -389,22 +401,62 @@
         what = "Conference";
         when = fmtRange(e.start, e.end);
         sub = [e.place && esc(e.place), rel(e.start)].filter(Boolean).join(" · ");
-        if (e.link) sub += `<br><a href="${esc(e.link)}" target="_blank" rel="noopener">Website</a>`;
     }
+    const site = siteFor(c, e);
     card.innerHTML = `<button class="close" type="button" aria-label="Close">✕</button>
       <div class="ev-head">${esc(c.title)} ${e.year}${e.est ? ` <span class="badge est">estimate</span>` : ""}</div>
       <h2>${esc(what)}</h2>
       <div class="ev-when">${when}</div>
-      <div class="ev-sub">${sub}</div>`;
+      <div class="ev-sub">${sub}</div>
+      ${pin && site ? `<div class="actions">${goButton(site, e.link ? `${c.title} ${e.year} website` : `${c.title} website`)}</div>` : ""}`;
     card.classList.toggle("pinned", !!pin);
     card.hidden = false;
     cardState = { anchor: el, pinned: !!pin };
     placeCard(el);
   }
+  // Website for an edition; estimated or unlinked editions fall back to the newest known site.
+  function siteFor(c, e) {
+    if (e?.link) return e.link;
+    const known = editions(c).filter(x => x.link);
+    return known.length ? known[known.length - 1].link : null;
+  }
+  const goButton = (href, label) => `<a class="go" href="${esc(href)}" target="_blank" rel="noopener">${esc(label)} <span aria-hidden="true">↗</span></a>`;
+  function showConfCard(el) {
+    const c = byId.get(el.dataset.info), now = Date.now();
+    const eds = editions(c);
+    const nd = nextDeadline(c);
+    const nextConf = eds.find(e => e.start != null && (e.end ?? e.start) + DAY >= now);
+    const rows = [];
+    if (nd) {
+      const soon = nd.t - now < 14 * DAY ? "soon" : "";
+      rows.push(`<dt>Next deadline</dt><dd>${fmtZone(nd.t, nd.e.off)}<span class="ev-sub"><span class="${soon}">${relTime(nd.t, now)}</span>${nd.e.est ? " · estimated" : ""}</span></dd>`);
+    } else {
+      rows.push(`<dt>Next deadline</dt><dd>Not announced</dd>`);
+    }
+    if (nextConf) {
+      const live = now >= nextConf.start && now < (nextConf.end ?? nextConf.start) + DAY;
+      rows.push(`<dt>${live ? "Happening now" : "Next meeting"}</dt><dd>${fmtRange(nextConf.start, nextConf.end)}<span class="ev-sub">${[nextConf.place && esc(nextConf.place), nextConf.est ? "estimated" : relTime(nextConf.start, now)].filter(Boolean).join(" · ")}</span></dd>`);
+    }
+    const site = siteFor(c, nd?.e ?? nextConf);
+    const rank = c.rank.core ? ` <span class="badge">CORE ${esc(c.rank.core)}</span>` : "";
+    const actions = [
+      site && goButton(site, "Website"),
+      c.dblp && `<a class="alt" href="https://dblp.org/db/conf/${esc(c.dblp)}/index.html" target="_blank" rel="noopener">Past papers on DBLP</a>`,
+    ].filter(Boolean).join("");
+    card.innerHTML = `<button class="close" type="button" aria-label="Close">✕</button>
+      <h2>${esc(c.title)}${rank}</h2>
+      <div class="full">${esc(c.description)}</div>
+      <dl class="rows">${rows.join("")}</dl>
+      ${actions ? `<div class="actions">${actions}</div>` : ""}`;
+    card.classList.add("pinned");
+    card.hidden = false;
+    cardState = { anchor: el, pinned: true };
+    placeCard(el);
+  }
   function placeCard(el) {
     const r = el.getBoundingClientRect(), cr = card.getBoundingClientRect();
     if (el.hidden || r.right < 0 || r.left > window.innerWidth) { hideCard(); return; }
-    const cx = el.classList.contains("bar") ? r.left + Math.min(r.width, 40) / 2 : r.left;
+    const cx = el.classList.contains("lane-name") ? r.left + cr.width / 2 : r.left;
     const left = Math.max(12, Math.min(cx - cr.width / 2, window.innerWidth - cr.width - 12));
     let top = r.top + r.height / 2 + 18;
     if (top + cr.height > window.innerHeight - 12) top = r.top - cr.height - 18;
