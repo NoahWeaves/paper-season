@@ -24,6 +24,7 @@
     --deadline: #3442c4;
     --published: #0d7f69;
     --decision: #a86c10;
+    --rebuttal: #8a4c9e;
     --now: #c03a26;
     --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
     --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
@@ -45,11 +46,16 @@
   .axis { position: absolute; top: 0; left: 0; right: 0; height: 2.4rem; pointer-events: none; z-index: 3; }
   .tick { position: absolute; top: .9rem; transform: translateX(-50%); font-size: .72rem; color: var(--muted); white-space: nowrap; }
   .tick.year { color: var(--ink); font-weight: 600; }
-  /* today: a hairline that spans only the conference lanes */
-  .now-line { position: absolute; top: 1.2rem; bottom: 5.2rem; left: 0; width: 1px; background: var(--now); opacity: .45; z-index: 1; pointer-events: none; }
+  /* today: a hairline that spans only the conference lanes, with a small label on top */
+  .now-line { position: absolute; top: 1.7rem; bottom: 5rem; left: 0; width: 1px; background: var(--now); opacity: .5; z-index: 1; pointer-events: none; }
+  .now-line::before { content: "today"; position: absolute; bottom: 100%; left: 0; transform: translateX(-50%); margin-bottom: .2rem; font-size: .66rem; letter-spacing: .04em; color: var(--now); }
+  /* month gridlines: dotted, with a firmer line at each new year */
+  .grid { position: absolute; top: 1.7rem; bottom: 5rem; left: 0; right: 0; pointer-events: none; z-index: 0; }
+  .gl { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dotted var(--rule); opacity: .55; }
+  .gl.year { border-left-style: solid; opacity: .7; }
 
   .lanes { position: absolute; top: 2.4rem; left: 0; right: 0; bottom: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
-  .lanes-inner { position: relative; margin-block: auto; padding-block: 1rem 5rem; }
+  .lanes-inner { position: relative; padding-block: 1.7rem 5rem; }
   .lane { position: relative; height: 3.6rem; }
   .lane::before { content: ""; position: absolute; left: 0; right: 0; top: 60%; height: 1.5px; margin-top: -.75px; background: var(--rule); }
   .lane-name { position: absolute; left: 16px; top: .35rem; z-index: 4; font-size: .8rem; font-weight: 600; color: var(--ink); background: var(--bg); padding: 0 .4rem 0 0; border: 0; cursor: pointer; }
@@ -70,14 +76,16 @@
   .doc.est svg { opacity: .45; }
   .doc.est .body { fill: var(--bg); }
   .doc.est .text { stroke: currentColor; }
-  /* conference: a lectern with a microphone, centred on the first day */
-  .podium svg { width: 21px; height: 21px; left: -10.5px; top: -13px; color: var(--published); fill: currentColor; }
-  .podium .mic { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  /* conference: a speaker behind a podium, centred on the first day */
+  .podium svg { width: 22px; height: 22px; left: -11px; top: -14px; color: var(--published); fill: currentColor; }
+  .podium .stand { stroke: var(--bg); stroke-width: 1.6; stroke-linejoin: round; paint-order: stroke; }
   .podium.est svg { opacity: .45; }
-  /* decisions: a small dot */
-  .mk.dec::before { content: ""; position: absolute; transform: translate(-50%, -50%); width: .5rem; height: .5rem; border-radius: 50%; background: var(--decision); }
-  .mk.dec.est::before { background: var(--bg); border: 1.5px dashed var(--decision); }
-  .mk.dec:hover::before { box-shadow: 0 0 0 3px var(--soft); }
+  /* rebuttal: a speech bubble (answering the reviewers) */
+  .reb svg { width: 17px; height: 17px; left: -8.5px; top: -9.5px; color: var(--rebuttal); fill: currentColor; }
+  .reb.est svg { opacity: .45; }
+  /* decisions: an exclamation mark */
+  .dec svg { width: 16px; height: 16px; left: -8px; top: -9px; color: var(--decision); fill: currentColor; }
+  .dec.est svg { opacity: .45; }
 
   .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 5; }
 
@@ -134,6 +142,7 @@
 <div class="board" id="board" aria-label="Conference timeline, six months either side of today">
   <div class="axis" id="axis"></div>
   <div class="now-line" id="now-line"></div>
+  <div class="grid" id="grid"></div>
   <div class="lanes" id="lanes"><div class="lanes-inner" id="lanes-inner"></div></div>
 </div>
 
@@ -236,32 +245,51 @@
       const items = (e.deadlines || []).map(dl => ({
         abstract: parseDeadline(dl.abstract_deadline, off),
         paper: parseDeadline(dl.deadline, off),
+        rebuttal: parseDeadline(dl.rebuttal_deadline, off),
         decision: parseDeadline(dl.decision_deadline, off),
         comment: dl.comment || "",
-      }));
-      const papers = items.map(i => i.paper).filter(t => t != null).sort((a, b) => a - b);
+        est: false,
+      })).filter(i => (i.abstract ?? i.paper ?? i.rebuttal ?? i.decision) != null);
       const start = parseDay(e.start);
       return {
         conf: c, year: e.year, link: e.link, place: e.place, dateText: e.dateText,
-        start, end: e.end ? parseDay(e.end) : start, off, items,
-        main: papers[0] ?? null,
-        decision: items.map(i => i.decision).find(t => t != null) ?? null,
-        est: false,
+        start, end: e.end ? parseDay(e.end) : start, off, items, estConf: false,
       };
     });
-    // Project the next edition when the newest known one has already closed submissions.
+    const shiftItem = (it, n) => ({
+      abstract: addYears(it.abstract, n), paper: addYears(it.paper, n),
+      rebuttal: addYears(it.rebuttal, n), decision: addYears(it.decision, n),
+      comment: /\d{4}/.test(it.comment) ? "" : it.comment, est: true,
+    });
+    // Unknown dates are estimated from the most recent earlier edition that has them.
+    eds.forEach((e, i) => {
+      const earlier = eds.slice(0, i).reverse();
+      if (!e.items.some(it => it.paper != null)) {
+        const t = earlier.find(p => p.items.some(it => it.paper != null));
+        if (t) { e.items = t.items.map(it => shiftItem(it, e.year - t.year)); e.basis = t.year; }
+      }
+      if (e.start == null) {
+        const t = earlier.find(p => p.start != null);
+        if (t) { e.start = addYears(t.start, e.year - t.year); e.end = addYears(t.end, e.year - t.year); e.estConf = true; e.basis ??= t.year; }
+      }
+    });
+    const finish = e => {
+      e.main = e.items.map(i => i.paper).filter(t => t != null).sort((a, b) => a - b)[0] ?? null;
+      e.decision = e.items.map(i => i.decision).find(t => t != null) ?? null;
+      return e;
+    };
+    eds.forEach(finish);
+    // Project the next edition when the newest one has already closed submissions.
     const last = eds[eds.length - 1];
     if (last && last.main != null && last.main < Date.now()) {
       const prev = eds[eds.length - 2];
       let gap = prev ? last.year - prev.year : 1;
       if (gap < 1 || gap > 2) gap = 1;
-      const sh = t => addYears(t, gap);
-      eds.push({
+      eds.push(finish({
         ...last, year: last.year + gap, link: null, place: null, dateText: null,
-        start: sh(last.start), end: sh(last.end), main: sh(last.main), decision: sh(last.decision),
-        items: last.items.map(i => ({ abstract: sh(i.abstract), paper: sh(i.paper), decision: sh(i.decision), comment: /\d{4}/.test(i.comment) ? "" : i.comment })),
-        est: true, basis: last.year,
-      });
+        start: addYears(last.start, gap), end: addYears(last.end, gap), estConf: last.start != null,
+        items: last.items.map(it => shiftItem(it, gap)), basis: last.year,
+      }));
     }
     edCache.set(c.id, eds);
     return eds;
@@ -271,7 +299,7 @@
     let best = null;
     for (const e of editions(c)) for (const i of e.items) {
       const t = i.paper ?? i.abstract;
-      if (t != null && t >= now && (!best || t < best.t)) best = { t, e };
+      if (t != null && t >= now && (!best || t < best.t)) best = { t, e, est: i.est };
     }
     return best;
   }
@@ -286,7 +314,7 @@
   // ---------- viewport ----------
   // Fixed window: half a year either side of today, today in the middle.
   const RANGE_DAYS = 183;
-  const board = $("board"), axis = $("axis"), lanesEl = $("lanes"), inner = $("lanes-inner"), nowLine = $("now-line");
+  const board = $("board"), axis = $("axis"), lanesEl = $("lanes"), inner = $("lanes-inner"), nowLine = $("now-line"), gridEl = $("grid");
   let W = 800, t0 = 0, pxPerDay = 1, marks = [];
 
   const pxPerMs = () => pxPerDay / DAY;
@@ -314,20 +342,21 @@
     for (const c of confs) {
       html += `<div class="lane"><button type="button" class="lane-name" data-info="${c.id}">${esc(c.title)}</button>`;
       editions(c).forEach((e, ei) => {
-        const key = `${c.id}|${ei}`, est = e.est ? " est" : "";
+        const key = `${c.id}|${ei}`;
         if (e.main != null && e.start != null && e.start > e.main) html += `<div class="m span" data-a="${e.main}" data-b="${e.start}"></div>`;
         e.items.forEach((it, ii) => {
-          const ref = `data-ed="${key}" data-item="${ii}"`;
+          const ref = `data-ed="${key}" data-item="${ii}"`, est = it.est ? " est" : "";
           if (it.abstract != null && it.abstract !== it.paper) html += `<div class="m mk doc abs${est}" data-a="${it.abstract}" ${ref} data-kind="abstract"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="body" d="M8 4h11a2 2 0 0 1 0 4h-1v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h1V6a2 2 0 0 1 2-2z"/><path d="M7 16v2a2 2 0 0 1-2 2"/><path class="text" d="M11 9h4M11 12.5h4"/></svg></div>`;
           if (it.paper != null) html += `<div class="m mk doc${est}" data-a="${it.paper}" ${ref} data-kind="paper"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="body" d="M8 4h11a2 2 0 0 1 0 4h-1v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h1V6a2 2 0 0 1 2-2z"/><path d="M7 16v2a2 2 0 0 1-2 2"/><path class="text" d="M11 9h4M11 12.5h4"/></svg></div>`;
-          if (it.decision != null) html += `<div class="m mk dec${est}" data-a="${it.decision}" ${ref} data-kind="decision"></div>`;
+          if (it.rebuttal != null) html += `<div class="m mk reb${est}" data-a="${it.rebuttal}" ${ref} data-kind="rebuttal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg></div>`;
+          if (it.decision != null) html += `<div class="m mk dec${est}" data-a="${it.decision}" ${ref} data-kind="decision"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9.6" y="2.5" width="4.8" height="13" rx="2.4"/><circle cx="12" cy="20" r="2.5"/></svg></div>`;
         });
-        if (e.start != null) html += `<div class="m mk podium${est}" data-a="${e.start}" data-ed="${key}" data-kind="conf"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="mic" d="M13.2 9.5l2.6-4.6"/><circle cx="16.6" cy="3.7" r="2.1"/><path d="M7.5 9.5h9l2.5 11.5H5z" stroke-linejoin="round"/></svg></div>`;
+        if (e.start != null) html += `<div class="m mk podium${e.estConf ? " est" : ""}" data-a="${e.start}" data-ed="${key}" data-kind="conf"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.2" r="3"/><path d="M5.5 14.5a6.5 6 0 0 1 13 0z"/><path class="stand" d="M6.5 11h11l2.2 10.5H4.3z"/></svg></div>`;
       });
       html += `</div>`;
     }
     inner.innerHTML = html;
-    inner.prepend(nowLine);
+    inner.prepend(gridEl, nowLine);
     inner.querySelectorAll(".m").forEach(el => marks.push({ el, a: +el.dataset.a, b: el.dataset.b ? +el.dataset.b : null }));
     layout();
   }
@@ -354,10 +383,11 @@
   }
   function drawAxis() {
     const t1 = t0 + W / pxPerMs(), d0 = new Date(t0);
-    let html = "";
+    let html = "", lines = "";
     const add = (t, label, cls = "") => {
       const px = x(t);
       if (px > 24 && px < W - 24) html += `<div class="tick ${cls}" style="left:${px}px">${label}</div>`;
+      if (px > 0 && px < W) lines += `<div class="gl ${cls}" style="left:${px}px"></div>`;
     };
     for (let i = 0; ; i++) {
       const t = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + i, 1);
@@ -366,6 +396,7 @@
       add(t, m === 0 ? String(dt.getUTCFullYear()) : MON[m], m === 0 ? "year" : "");
     }
     axis.innerHTML = html;
+    gridEl.innerHTML = lines;
   }
 
   board.addEventListener("click", ev => {
@@ -393,6 +424,9 @@
       case "paper":
         what = shortComment(it.comment) || "Full paper deadline";
         when = fmtZone(it.paper, e.off); sub = `${fmtLocal(it.paper)} your time · ${rel(it.paper)}`; break;
+      case "rebuttal":
+        what = "Rebuttal deadline";
+        when = fmtZone(it.rebuttal, e.off); sub = `${fmtLocal(it.rebuttal)} your time · ${rel(it.rebuttal)}`; break;
       case "decision":
         what = "Decisions";
         when = fmtShort(it.decision, e.off); sub = rel(it.decision); break;
@@ -402,8 +436,9 @@
         sub = [e.place && esc(e.place), rel(e.start)].filter(Boolean).join(" · ");
     }
     const site = siteFor(c, e);
+    const isEst = el.dataset.kind === "conf" ? e.estConf : it?.est;
     card.innerHTML = `<button class="close" type="button" aria-label="Close">✕</button>
-      <div class="ev-head">${esc(c.title)} ${e.year}${e.est ? ` <span class="badge est">estimate</span>` : ""}</div>
+      <div class="ev-head">${esc(c.title)} ${e.year}${isEst ? ` <span class="badge est">estimated from ${e.basis}</span>` : ""}</div>
       <h2>${esc(what)}</h2>
       <div class="ev-when">${when}</div>
       <div class="ev-sub">${sub}</div>
@@ -428,13 +463,13 @@
     const rows = [];
     if (nd) {
       const soon = nd.t - now < 14 * DAY ? "soon" : "";
-      rows.push(`<dt>Next deadline</dt><dd>${fmtZone(nd.t, nd.e.off)}<span class="ev-sub"><span class="${soon}">${relTime(nd.t, now)}</span>${nd.e.est ? " · estimated" : ""}</span></dd>`);
+      rows.push(`<dt>Next deadline</dt><dd>${fmtZone(nd.t, nd.e.off)}<span class="ev-sub"><span class="${soon}">${relTime(nd.t, now)}</span>${nd.est ? " · estimated" : ""}</span></dd>`);
     } else {
       rows.push(`<dt>Next deadline</dt><dd>Not announced</dd>`);
     }
     if (nextConf) {
       const live = now >= nextConf.start && now < (nextConf.end ?? nextConf.start) + DAY;
-      rows.push(`<dt>${live ? "Happening now" : "Next meeting"}</dt><dd>${fmtRange(nextConf.start, nextConf.end)}<span class="ev-sub">${[nextConf.place && esc(nextConf.place), nextConf.est ? "estimated" : relTime(nextConf.start, now)].filter(Boolean).join(" · ")}</span></dd>`);
+      rows.push(`<dt>${live ? "Happening now" : "Next meeting"}</dt><dd>${fmtRange(nextConf.start, nextConf.end)}<span class="ev-sub">${[nextConf.place && esc(nextConf.place), nextConf.estConf ? "estimated" : relTime(nextConf.start, now)].filter(Boolean).join(" · ")}</span></dd>`);
     }
     const site = siteFor(c, nd?.e ?? nextConf);
     const rank = c.rank.core ? ` <span class="badge">CORE ${esc(c.rank.core)}</span>` : "";
