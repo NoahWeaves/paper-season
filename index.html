@@ -89,7 +89,13 @@
 
   .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 5; }
 
-  .fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 30; border: 0; border-radius: 999px; padding: .65rem 1.2rem; background: var(--ink); color: var(--bg); font-size: .88rem; font-weight: 500; cursor: pointer; box-shadow: 0 6px 20px rgba(10, 15, 25, .18); }
+  .dock { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 30; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .6rem .9rem; max-width: calc(100vw - 40px); }
+  .fab { border: 0; border-radius: 999px; padding: .65rem 1.2rem; background: var(--ink); color: var(--bg); font-size: .88rem; font-weight: 500; cursor: pointer; box-shadow: 0 6px 20px rgba(10, 15, 25, .18); }
+  /* key: one row of the timeline's symbols */
+  .key { display: flex; flex-wrap: wrap; gap: .3rem .9rem; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: .45rem .9rem; font-size: .72rem; color: var(--muted); }
+  .key .k { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
+  .key .ki { position: relative; display: inline-block; width: 15px; height: 15px; }
+  .key .ki svg { position: static; display: block; width: 15px; height: 15px; }
   .fab:hover { transform: translateY(-1px); }
   .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: .45rem .9rem; cursor: pointer; font-size: .88rem; }
   .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 500; }
@@ -146,7 +152,10 @@
   <div class="lanes" id="lanes"><div class="lanes-inner" id="lanes-inner"></div></div>
 </div>
 
-<button class="fab" id="pick-btn" type="button">Conferences</button>
+<div class="dock">
+  <div class="key" aria-label="Key"><span class="k"><span class="ki doc"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="body" d="M8 4h11a2 2 0 0 1 0 4h-1v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h1V6a2 2 0 0 1 2-2z"/><path d="M7 16v2a2 2 0 0 1-2 2"/><path class="text" d="M11 9h4M11 12.5h4"/></svg></span>Submission</span><span class="k"><span class="ki doc abs"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="body" d="M8 4h11a2 2 0 0 1 0 4h-1v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h1V6a2 2 0 0 1 2-2z"/><path d="M7 16v2a2 2 0 0 1-2 2"/><path class="text" d="M11 9h4M11 12.5h4"/></svg></span>Abstract</span><span class="k"><span class="ki reb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg></span>Rebuttal</span><span class="k"><span class="ki dec"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9.6" y="2.5" width="4.8" height="13" rx="2.4"/><circle cx="12" cy="20" r="2.5"/></svg></span>Decisions</span><span class="k"><span class="ki podium"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.2" r="3"/><path d="M5.5 14.5a6.5 6 0 0 1 13 0z"/><path class="stand" d="M4.3 11h15.4l-2.2 10.5H6.5z"/></svg></span>Conference</span><span class="k"><span class="ki doc est"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="body" d="M8 4h11a2 2 0 0 1 0 4h-1v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h1V6a2 2 0 0 1 2-2z"/><path d="M7 16v2a2 2 0 0 1-2 2"/><path class="text" d="M11 9h4M11 12.5h4"/></svg></span>Estimated</span></div>
+  <button class="fab" id="pick-btn" type="button">Conferences</button>
+</div>
 
 <div class="card" id="card" hidden></div>
 
