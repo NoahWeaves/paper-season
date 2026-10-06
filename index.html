@@ -44,15 +44,14 @@
   /* Timeline */
   .board { position: relative; height: 100%; overflow: hidden; }
   .axis { position: absolute; top: 0; left: 0; right: 0; height: 2.4rem; pointer-events: none; z-index: 3; }
-  .tick { position: absolute; top: .9rem; transform: translateX(-50%); font-size: .72rem; color: var(--muted); white-space: nowrap; }
+  .tick { position: absolute; top: .8rem; transform: translateX(-50%); font-size: .85rem; color: var(--muted); white-space: nowrap; }
   .tick.year { color: var(--ink); font-weight: 600; }
   /* today: a hairline that spans only the conference lanes, with a small label on top */
   .now-line { position: absolute; top: 1.7rem; bottom: 5rem; left: 0; width: 1px; background: var(--now); opacity: .5; z-index: 1; pointer-events: none; }
   .now-line::before { content: "today"; position: absolute; bottom: 100%; left: 0; transform: translateX(-50%); margin-bottom: .2rem; font-size: .66rem; letter-spacing: .04em; color: var(--now); }
-  /* month gridlines: dotted, with a firmer line at each new year */
+  /* month gridlines: one quiet solid line at the start of each month */
   .grid { position: absolute; top: 1.7rem; bottom: 5rem; left: 0; right: 0; pointer-events: none; z-index: 0; }
-  .gl { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dotted var(--rule); opacity: .55; }
-  .gl.year { border-left-style: solid; opacity: .7; }
+  .gl { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid var(--rule); opacity: .7; }
 
   .lanes { position: absolute; top: 2.4rem; left: 0; right: 0; bottom: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
   .lanes-inner { position: relative; padding-block: 1.7rem 5rem; }
